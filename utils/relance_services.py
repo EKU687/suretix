@@ -1,10 +1,23 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import streamlit as st
 from config import TABLE_INCIDENTS, get_supabase_client
+
+# Import sécurisé de Streamlit (Bypass si exécuté hors IHM comme dans GitHub Actions)
+try:
+    import streamlit as st
+except ModuleNotFoundError:
+    st = None
 
 supabase = get_supabase_client()
 TZ_NC = ZoneInfo("Pacific/Noumea")
+
+
+def _log_error(message: str):
+    """Affiche l'erreur dans Streamlit si présent, sinon dans la console terminal."""
+    if st is not None:
+        st.error(message)
+    else:
+        print(f"❌ [SLA ERROR] {message}")
 
 
 def get_incidents_a_relancer() -> list:
@@ -22,7 +35,7 @@ def get_incidents_a_relancer() -> list:
         )
         return res.data or []
     except Exception as e:
-        st.error(f"Erreur lors de la vérification des relances : {e}")
+        _log_error(f"Erreur lors de la vérification des relances : {e}")
         return []
 
 
@@ -35,5 +48,5 @@ def repousser_date_relance(incident_id: str, jours: int = 5) -> bool:
         ).eq("id", incident_id).execute()
         return True
     except Exception as e:
-        st.error(f"Erreur lors de la mise à jour de la date de relance : {e}")
+        _log_error(f"Erreur lors de la mise à jour de la date de relance : {e}")
         return False
