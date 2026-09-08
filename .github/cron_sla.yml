@@ -1,0 +1,44 @@
+name: Controle Matinal SLA SURETIX
+
+on:
+  schedule:
+    # 20:00 UTC = 07:00 Heure de Nouméa (UTC+11)
+    - cron: '0 20 * * *'
+  workflow_dispatch: # Permet de lancer le test manuellement depuis GitHub
+
+jobs:
+  check-sla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v3
+
+      - name: Configuration de Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Installation des dépendances
+        run: |
+          pip install supabase pandas
+
+      - name: Exécution du script d'alerte SLA
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          python -c "
+          from utils.relance_services import get_incidents_a_relancer
+          from utils.email_services import envoyer_notification_relance_sla
+          
+          incidents = get_incidents_a_relancer()
+          if incidents:
+              print(f'🚨 {len(incidents)} incidents en souffrance détectés. Envoi de l\'email...')
+              envoyer_notification_relance_sla(incidents, async_send=False)
+          else:
+              print('✅ Aucun incident en souffrance ce matin.')
+          "
