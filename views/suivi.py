@@ -37,7 +37,11 @@ def render_suivi_page():
 
     # Récupération de l'utilisateur connecté en session
     user_profile = st.session_state.get("user_profile", {})
-    user_email_actuel = user_profile.get("email") or user_profile.get("login") or "eric.kuter@gouv.nc"
+    user_email_actuel = (
+        user_profile.get("email")
+        or user_profile.get("login")
+        or "eric.kuter@gouv.nc"
+    )
 
     # --- ZONE DE FILTRES ---
     with st.expander("🔍 Filtres de recherche", expanded=True):
@@ -115,23 +119,38 @@ def render_suivi_page():
         st.markdown(f"**Titre :** {incident_sel['titre']}")
         st.markdown(f"**Description :**\n> {incident_sel['description']}")
         st.caption(
-            f"Demandeur : {incident_sel['demandeur_email']} | Équipement : {incident_sel.get('equipement_concerne') or 'N/A'}"
+            f"Demandeur : {incident_sel['demandeur_email']} | Équipement :"
+            f" {incident_sel.get('equipement_concerne') or 'N/A'}"
         )
 
-        # --- GESTION SLA / DATE DE RELANCE ---
+        # --- GESTION SLA / DATE DE RELANCE DYNAMIQUE ---
         st.divider()
-        col_sla1, col_sla2 = st.columns([2, 1])
+        col_sla1, col_sla2, col_sla3 = st.columns([2, 1, 1])
+
         date_rel_str = format_utc_to_local(incident_sel.get("date_relance"))
         col_sla1.info(f"⏳ **Prochaine échéance SLA :** {date_rel_str}")
-        
-        if col_sla2.button("🔄 Repousser SLA (+5j)", key=f"btn_rel_manual_{incident_sel['id']}"):
-            repousser_date_relance(incident_sel["id"], jours=5)
+
+        # Choix dynamique du nombre de jours selon la situation terrain (Commande/Logistique)
+        jours_relance = col_sla2.selectbox(
+            "Délai de report",
+            options=[5, 10, 15, 30, 60],
+            format_func=lambda x: f"+{x} jours",
+            key=f"select_jours_{incident_sel['id']}",
+        )
+
+        if col_sla3.button(
+            f"🔄 Repousser SLA (+{jours_relance}j)",
+            key=f"btn_rel_manual_{incident_sel['id']}",
+        ):
+            repousser_date_relance(incident_sel["id"], jours=jours_relance)
             add_commentaire(
                 incident_sel["id"],
                 user_email_actuel,
-                "Opération manuelle : Délai de relance repoussé de 5 jours.",
+                f"Opération manuelle : Délai de relance SLA repoussé de {jours_relance} jours.",
             )
-            st.toast("Prochaine relance repoussée à +5 jours !", icon="✅")
+            st.toast(
+                f"Prochaine relance fixée à +{jours_relance} jours !", icon="✅"
+            )
             st.rerun()
 
         st.divider()
@@ -177,8 +196,9 @@ def render_suivi_page():
                                 incident_sel["id"], nouveau_fichier
                             )
                             if res:
-                                # Mise à jour de la date de relance lors d'un ajout de document
-                                repousser_date_relance(incident_sel["id"], jours=5)
+                                repousser_date_relance(
+                                    incident_sel["id"], jours=5
+                                )
                                 st.success("Fichier téléversé avec succès !")
                                 st.rerun()
                     else:
@@ -211,14 +231,15 @@ def render_suivi_page():
             st.write("")
             if st.button("Mettre à jour", use_container_width=True):
                 if nouveau_statut.lower() != incident_sel["statut"]:
-                    update_incident_statut(incident_sel["id"], nouveau_statut)
+                    update_incident_statut(
+                        incident_sel["id"], nouveau_statut
+                    )
                     add_commentaire(
                         incident_sel["id"],
                         user_email_actuel,
                         f"Changement de statut vers : {STATUTS_WORKFLOW[nouveau_statut]}",
                         changement_statut=nouveau_statut,
                     )
-                    # Réinitialisation automatique du délai SLA (+5 jours)
                     repousser_date_relance(incident_sel["id"], jours=5)
                     st.success("Statut mis à jour et délai SLA relancé !")
                     st.rerun()
@@ -233,11 +254,11 @@ def render_suivi_page():
             for com in commentaires:
                 date_locale = format_utc_to_local(com["created_at"])
                 with st.chat_message(
-                    "user" if not com.get("changement_statut") else "assistant"
+                    "user"
+                    if not com.get("changement_statut")
+                    else "assistant"
                 ):
-                    st.write(
-                        f"**{com['auteur_email']}** — *{date_locale}*"
-                    )
+                    st.write(f"**{com['auteur_email']}** — *{date_locale}*")
                     st.write(com["message"])
         else:
             st.caption("Aucune note enregistrée sur ce ticket.")
@@ -247,14 +268,17 @@ def render_suivi_page():
                 "Votre Email / Identifiant", value=user_email_actuel
             )
             message = st.text_area(
-                "Ajouter une note d'intervention (ex: Appel technicien, pièce commandée)",
+                "Ajouter une note d'intervention (ex: Appel technicien, pièce"
+                " commandée)",
                 height=80,
             )
             btn_com = st.form_submit_button("Ajouter à la main courante")
 
             if btn_com and message:
                 add_commentaire(incident_sel["id"], auteur, message)
-                # Réinitialisation automatique du délai SLA (+5 jours)
                 repousser_date_relance(incident_sel["id"], jours=5)
-                st.success("Note ajoutée et délai de relance réinitialisé à +5 jours !")
+                st.success(
+                    "Note ajoutée et délai de relance réinitialisé à +5"
+                    " jours !"
+                )
                 st.rerun()
