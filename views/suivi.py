@@ -10,6 +10,7 @@ from utils.attachment_services import (
     upload_piece_jointe,
 )
 from utils.refero_services import get_refero_directions, get_refero_sites
+from utils.relance_services import repousser_date_relance
 from utils.suivi_services import (
     add_commentaire,
     get_commentaires,
@@ -33,6 +34,10 @@ def format_utc_to_local(iso_string: str) -> str:
 
 def render_suivi_page():
     st.title("📋 SURETIX - Suivi & Traitement des Incidents")
+
+    # Récupération de l'utilisateur connecté en session
+    user_profile = st.session_state.get("user_profile", {})
+    user_email_actuel = user_profile.get("email") or user_profile.get("login") or "eric.kuter@gouv.nc"
 
     # --- ZONE DE FILTRES ---
     with st.expander("🔍 Filtres de recherche", expanded=True):
@@ -113,6 +118,22 @@ def render_suivi_page():
             f"Demandeur : {incident_sel['demandeur_email']} | Équipement : {incident_sel.get('equipement_concerne') or 'N/A'}"
         )
 
+        # --- GESTION SLA / DATE DE RELANCE ---
+        st.divider()
+        col_sla1, col_sla2 = st.columns([2, 1])
+        date_rel_str = format_utc_to_local(incident_sel.get("date_relance"))
+        col_sla1.info(f"⏳ **Prochaine échéance SLA :** {date_rel_str}")
+        
+        if col_sla2.button("🔄 Repousser SLA (+5j)", key=f"btn_rel_manual_{incident_sel['id']}"):
+            repousser_date_relance(incident_sel["id"], jours=5)
+            add_commentaire(
+                incident_sel["id"],
+                user_email_actuel,
+                "Opération manuelle : Délai de relance repoussé de 5 jours.",
+            )
+            st.toast("Prochaine relance repoussée à +5 jours !", icon="✅")
+            st.rerun()
+
         st.divider()
 
         # --- PIÈCES JOINTES & DOCUMENTS ---
@@ -125,7 +146,6 @@ def render_suivi_page():
                 col_pj1.caption(f"📄 {pj['file_name']}")
                 col_pj2.markdown(f"[📥 Ouvrir]({pj['file_path']})")
 
-                # Bouton de suppression avec rechargement automatique
                 if col_pj3.button(
                     "🗑️",
                     key=f"del_pj_{pj['id']}",
@@ -157,6 +177,8 @@ def render_suivi_page():
                                 incident_sel["id"], nouveau_fichier
                             )
                             if res:
+                                # Mise à jour de la date de relance lors d'un ajout de document
+                                repousser_date_relance(incident_sel["id"], jours=5)
                                 st.success("Fichier téléversé avec succès !")
                                 st.rerun()
                     else:
@@ -192,11 +214,13 @@ def render_suivi_page():
                     update_incident_statut(incident_sel["id"], nouveau_statut)
                     add_commentaire(
                         incident_sel["id"],
-                        "Système / Opérateur",
+                        user_email_actuel,
                         f"Changement de statut vers : {STATUTS_WORKFLOW[nouveau_statut]}",
                         changement_statut=nouveau_statut,
                     )
-                    st.success("Statut mis à jour !")
+                    # Réinitialisation automatique du délai SLA (+5 jours)
+                    repousser_date_relance(incident_sel["id"], jours=5)
+                    st.success("Statut mis à jour et délai SLA relancé !")
                     st.rerun()
 
         st.divider()
@@ -220,7 +244,7 @@ def render_suivi_page():
 
         with st.form(f"form_com_{incident_sel['id']}", clear_on_submit=True):
             auteur = st.text_input(
-                "Votre Email / Identifiant", value="eric.kuter@gouv.nc"
+                "Votre Email / Identifiant", value=user_email_actuel
             )
             message = st.text_area(
                 "Ajouter une note d'intervention (ex: Appel technicien, pièce commandée)",
@@ -230,5 +254,7 @@ def render_suivi_page():
 
             if btn_com and message:
                 add_commentaire(incident_sel["id"], auteur, message)
-                st.success("Note ajoutée !")
+                # Réinitialisation automatique du délai SLA (+5 jours)
+                repousser_date_relance(incident_sel["id"], jours=5)
+                st.success("Note ajoutée et délai de relance réinitialisé à +5 jours !")
                 st.rerun()
