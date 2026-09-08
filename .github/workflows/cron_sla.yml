@@ -24,6 +24,7 @@ jobs:
 
       - name: Exécution du contrôle matinal SLA & Envoi Mail
         env:
+          PYTHONPATH: .
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
@@ -32,6 +33,10 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         run: |
           python -c "
+          import sys
+          from pathlib import Path
+          sys.path.append(str(Path('.').resolve()))
+
           from utils.relance_services import get_incidents_a_relancer
           from utils.email_services import envoyer_notification_relance_sla
 
